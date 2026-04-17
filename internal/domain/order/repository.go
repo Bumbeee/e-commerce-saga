@@ -8,10 +8,19 @@ import (
 	"github.com/shopspring/decimal"
 )
 
+type Status string
+
+const (
+	StatusCreated   Status = "created"
+	StatusPaid      Status = "paid"
+	StatusShipped   Status = "shipped"
+	StatusCancelled Status = "cancelled"
+)
+
 type Order struct {
-	Id          uuid.UUID       `json:"id,omitempty"`
-	UserId      uuid.UUID       `json:"user_id,omitempty"`
-	Status      string          `json:"status"`
+	ID          uuid.UUID       `json:"id,omitempty"`
+	UserID      uuid.UUID       `json:"user_id,omitempty"`
+	Status      Status          `json:"status"`
 	TotalAmount decimal.Decimal `json:"total_amount"`
 	CreatedAt   time.Time       `json:"created_at,omitempty"`
 	UpdatedAt   *time.Time      `json:"updated_at,omitempty"`
@@ -19,6 +28,6 @@ type Order struct {
 
 type Repository interface {
 	Create(ctx context.Context, order *Order) error
-	GetByID(ctx context.Context, id string) (*Order, error)
-	UpdateStatus(ctx context.Context, id, status string) error
+	GetByID(ctx context.Context, id uuid.UUID) (*Order, error)
+	UpdateStatus(ctx context.Context, id uuid.UUID, status string) error
 }

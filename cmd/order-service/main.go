@@ -10,6 +10,8 @@ import (
 	"time"
 
 	"e-commerce/internal/config"
+	"e-commerce/internal/domain/order"
+	"e-commerce/internal/handler"
 	"e-commerce/internal/infrastructure/db"
 	"e-commerce/internal/logger"
 )
@@ -28,20 +30,6 @@ func main() {
 		"log_level", cfg.LogLevel,
 	)
 
-	mux := http.NewServeMux()
-	mux.HandleFunc("/health", func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusOK)
-		w.Write([]byte(`{"status": "ok"}`))
-	})
-
-	srv := &http.Server{
-		Addr:         cfg.ServerAddress,
-		Handler:      mux,
-		ReadTimeout:  cfg.ReadTimeout,
-		WriteTimeout: cfg.WriteTimeout,
-	}
-
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
@@ -58,7 +46,25 @@ func main() {
 		os.Exit(1)
 	}
 
-	// orderRepo := order.NewRepository(pool)
+	orderRepo := db.NewOrderRepository(pool)
+	svc := order.NewService(orderRepo)
+	orderHandler := handler.NewOrderHandler(svc, log)
+
+	mux := http.NewServeMux()
+	mux.HandleFunc("/health", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		w.Write([]byte(`{"status": "ok"}`))
+	})
+	mux.HandleFunc("POST /orders", orderHandler.Create)
+	mux.HandleFunc("GET /orders/{id}", orderHandler.GetByID)
+
+	srv := &http.Server{
+		Addr:         cfg.ServerAddress,
+		Handler:      mux,
+		ReadTimeout:  cfg.ReadTimeout,
+		WriteTimeout: cfg.WriteTimeout,
+	}
 
 	stop := make(chan os.Signal, 1)
 	signal.Notify(stop, syscall.SIGINT, syscall.SIGTERM)
@@ -83,5 +89,4 @@ func main() {
 
 	<-ctx.Done()
 	log.Info("service stopped")
-
 }
