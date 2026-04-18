@@ -64,3 +64,61 @@ func (r *pgxRepository) UpdateStatus(ctx context.Context, id uuid.UUID, status s
 	}
 	return nil
 }
+
+func (r *pgxRepository) List(ctx context.Context, params order.ListParams) ([]*order.Order, int64, error) {
+	params.WithDefaults()
+	var (
+		query      string
+		orders     []*order.Order
+		args       []any
+		totalCount int64
+	)
+
+	if params.UserID != uuid.Nil {
+		query = `SELECT id, user_id, status, total_amount, created_at, updated_at, COUNT(*) OVER() AS total_count
+		FROM orders
+		WHERE user_id = $1
+		ORDER BY created_at DESC
+		LIMIT $2 OFFSET $3`
+		args = append(args, params.UserID, params.Limit, params.Offset)
+	} else {
+		query = `SELECT id, user_id, status, total_amount, created_at, updated_at, COUNT(*) OVER() AS total_count
+		FROM orders
+		ORDER BY created_at DESC
+		LIMIT $1 OFFSET $2`
+		args = append(args, params.Limit, params.Offset)
+	}
+
+	rows, err := r.pool.Query(ctx, query, args...)
+	if err != nil {
+		return nil, 0, fmt.Errorf("repository.List: %w", err)
+	}
+	defer rows.Close()
+
+	for rows.Next() {
+		ord := &order.Order{}
+		var rowTotalCount int64
+		if err := rows.Scan(
+			&ord.ID,
+			&ord.UserID,
+			&ord.Status,
+			&ord.TotalAmount,
+			&ord.CreatedAt,
+			&ord.UpdatedAt,
+			&rowTotalCount,
+		); err != nil {
+			return nil, 0, fmt.Errorf("repository.List: %w", err)
+		}
+		if totalCount == 0 {
+			totalCount = rowTotalCount
+		}
+		orders = append(orders, ord)
+
+	}
+
+	if err := rows.Err(); err != nil {
+		return nil, 0, fmt.Errorf("repository.List: %w", err)
+	}
+
+	return orders, totalCount, nil
+}

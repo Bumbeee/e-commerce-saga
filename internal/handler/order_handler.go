@@ -6,6 +6,7 @@ import (
 	"errors"
 	"log/slog"
 	"net/http"
+	"strconv"
 
 	"e-commerce/internal/domain/order"
 
@@ -15,6 +16,7 @@ import (
 type OrderService interface {
 	CreateOrder(ctx context.Context, dto order.CreateOrderDTO) (*order.Order, error)
 	GetByID(ctx context.Context, uuid uuid.UUID) (*order.Order, error)
+	ListOrders(ctx context.Context, params order.ListParams) ([]*order.Order, int64, error)
 }
 
 type OrderHandler struct {
@@ -57,6 +59,7 @@ func (h *OrderHandler) Create(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
+// GET /orders/{id}
 func (h *OrderHandler) GetByID(w http.ResponseWriter, r *http.Request) {
 	idStr := r.PathValue("id")
 	orderID, err := uuid.Parse(idStr)
@@ -82,7 +85,64 @@ func (h *OrderHandler) GetByID(w http.ResponseWriter, r *http.Request) {
 	if err := json.NewEncoder(w).Encode(ord); err != nil {
 		h.log.Error("failed to encode response", "error", err)
 	}
+}
 
+// GET /orders
+func (h *OrderHandler) List(w http.ResponseWriter, r *http.Request) {
+	query := r.URL.Query()
+
+	var params order.ListParams
+
+	if userID := query.Get("user_id"); userID != "" {
+		parsedUserID, err := uuid.Parse(userID)
+		if err != nil {
+			h.writeError(r.Context(), w, http.StatusBadRequest, "invalid user_id format", err)
+			return
+		}
+		params.UserID = parsedUserID
+	}
+
+	if limit := query.Get("limit"); limit != "" {
+		parsedLimit, err := strconv.Atoi(limit)
+		if err != nil {
+			h.writeError(r.Context(), w, http.StatusBadRequest, "invalid limit", err)
+			return
+		}
+		params.Limit = parsedLimit
+	}
+
+	if offset := query.Get("offset"); offset != "" {
+		parsedOffset, err := strconv.Atoi(offset)
+		if err != nil {
+			h.writeError(r.Context(), w, http.StatusBadRequest, "invalid offset", err)
+			return
+		}
+		params.Offset = parsedOffset
+	}
+
+	params.WithDefaults()
+
+	orders, total, err := h.service.ListOrders(r.Context(), params)
+	if err != nil {
+		h.log.Error("list orders failed", "error", err)
+		h.writeError(r.Context(), w, http.StatusInternalServerError, "internal server error", nil)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusOK)
+
+	response := ListOrdersResponse{
+		Items:   orders,
+		Total:   total,
+		Limit:   params.Limit,
+		Offset:  params.Offset,
+		HasMore: params.Offset+params.Limit < int(total),
+	}
+
+	if err := json.NewEncoder(w).Encode(response); err != nil {
+		h.log.Error("failed to encode response", "error", err)
+	}
 }
 
 func (h *OrderHandler) writeError(ctx context.Context, w http.ResponseWriter, status int, message string, err error) {
@@ -100,4 +160,12 @@ func (h *OrderHandler) writeError(ctx context.Context, w http.ResponseWriter, st
 type ErrorResponse struct {
 	Error   string `json:"error"`
 	Details string `json:"details,omitempty"`
+}
+
+type ListOrdersResponse struct {
+	Items   []*order.Order `json:"items"`
+	Total   int64          `json:"total"`
+	Limit   int            `json:"limit"`
+	Offset  int            `json:"offset"`
+	HasMore bool           `json:"has_more"`
 }

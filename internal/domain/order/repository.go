@@ -14,6 +14,7 @@ const (
 	StatusCreated   Status = "created"
 	StatusPaid      Status = "paid"
 	StatusShipped   Status = "shipped"
+	StatusDelivered Status = "delivered"
 	StatusCancelled Status = "cancelled"
 )
 
@@ -30,4 +31,6 @@ type Repository interface {
 	Create(ctx context.Context, order *Order) error
 	GetByID(ctx context.Context, id uuid.UUID) (*Order, error)
 	UpdateStatus(ctx context.Context, id uuid.UUID, status string) error
+
+	List(ctx context.Context, params ListParams) ([]*Order, int64, error)
 }

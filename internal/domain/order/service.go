@@ -57,6 +57,21 @@ func (s *Service) GetByID(ctx context.Context, id uuid.UUID) (*Order, error) {
 	return ord, nil
 }
 
+func (s *Service) ListOrders(ctx context.Context, params ListParams) ([]*Order, int64, error) {
+	if params.Limit < 1 || params.Limit > 100 {
+		return nil, 0, fmt.Errorf("limit must be between 1 and 100: %w", ErrInvalidParams)
+	}
+	if params.Offset < 0 {
+		return nil, 0, fmt.Errorf("offset must be non-negative: %w", ErrInvalidParams)
+	}
+
+	orders, total, err := s.repo.List(ctx, params)
+	if err != nil {
+		return nil, 0, fmt.Errorf("service.ListOrders: %w", err)
+	}
+	return orders, total, nil
+}
+
 func validateCreateDTO(dto CreateOrderDTO) error {
 	if dto.UserID == "" {
 		return errors.New("user_id is required")
