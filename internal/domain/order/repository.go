@@ -30,7 +30,7 @@ type Order struct {
 type Repository interface {
 	Create(ctx context.Context, order *Order) error
 	GetByID(ctx context.Context, id uuid.UUID) (*Order, error)
-	UpdateStatus(ctx context.Context, id uuid.UUID, status string) error
+	UpdateStatus(ctx context.Context, id uuid.UUID, status Status, expectedUpdatedAt *time.Time) error
 
 	List(ctx context.Context, params ListParams) ([]*Order, int64, error)
 }

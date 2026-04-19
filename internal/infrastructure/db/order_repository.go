@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"time"
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
@@ -51,18 +52,6 @@ func (r *pgxRepository) GetByID(ctx context.Context, id uuid.UUID) (*order.Order
 		return nil, fmt.Errorf("repository.GetById: %w", err)
 	}
 	return ord, nil
-}
-
-func (r *pgxRepository) UpdateStatus(ctx context.Context, id uuid.UUID, status string) error {
-	query := `UPDATE orders SET status = $1, updated_at = now() WHERE id = $2`
-	cmd, err := r.pool.Exec(ctx, query, status, id)
-	if err != nil {
-		return fmt.Errorf("repository.UpdateStatus: %w", err)
-	}
-	if cmd.RowsAffected() == 0 {
-		return order.ErrNotFound
-	}
-	return nil
 }
 
 func (r *pgxRepository) List(ctx context.Context, params order.ListParams) ([]*order.Order, int64, error) {
@@ -121,4 +110,43 @@ func (r *pgxRepository) List(ctx context.Context, params order.ListParams) ([]*o
 	}
 
 	return orders, totalCount, nil
+}
+
+func (r *pgxRepository) UpdateStatus(ctx context.Context, id uuid.UUID, status order.Status, expectedUpdatedAt *time.Time) error {
+	var query string
+	var args []any
+
+	if expectedUpdatedAt != nil {
+		query = `
+            UPDATE orders 
+            SET status = $1, updated_at = now() 
+            WHERE id = $2 AND updated_at = $3 
+            RETURNING id
+        `
+		args = []any{status, id, *expectedUpdatedAt}
+	} else {
+		query = `
+            UPDATE orders 
+            SET status = $1, updated_at = now() 
+            WHERE id = $2 
+            RETURNING id
+        `
+		args = []any{status, id}
+	}
+
+	var updatedID uuid.UUID
+	err := r.pool.QueryRow(ctx, query, args...).Scan(&updatedID)
+
+	if errors.Is(err, pgx.ErrNoRows) {
+		if expectedUpdatedAt != nil {
+			return order.ErrConflict
+		}
+		return order.ErrNotFound
+	}
+
+	if err != nil {
+		return fmt.Errorf("repository.UpdateStatus: %w", err)
+	}
+
+	return nil
 }

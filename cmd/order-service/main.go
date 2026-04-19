@@ -59,6 +59,7 @@ func main() {
 	mux.HandleFunc("POST /orders", orderHandler.Create)
 	mux.HandleFunc("GET /orders/{id}", orderHandler.GetByID)
 	mux.HandleFunc("GET /orders", orderHandler.List)
+	mux.HandleFunc("PATCH /orders/{id}", orderHandler.UpdateStatus)
 
 	srv := &http.Server{
 		Addr:         cfg.ServerAddress,

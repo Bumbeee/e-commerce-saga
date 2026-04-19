@@ -15,6 +15,11 @@ type CreateOrderDTO struct {
 	TotalAmount decimal.Decimal `json:"total_amount"`
 }
 
+type UpdateStatusDTO struct {
+	Status            Status     `json:"status"`
+	ExpectedUpdatedAt *time.Time `json:"expected_updated_at,omitempty"`
+}
+
 type Service struct {
 	repo Repository
 }
@@ -70,6 +75,25 @@ func (s *Service) ListOrders(ctx context.Context, params ListParams) ([]*Order, 
 		return nil, 0, fmt.Errorf("service.ListOrders: %w", err)
 	}
 	return orders, total, nil
+}
+
+func (s *Service) UpdateStatus(ctx context.Context, id uuid.UUID, dto UpdateStatusDTO) (*Order, error) {
+	current, err := s.repo.GetByID(ctx, id)
+	if err != nil {
+		return nil, fmt.Errorf("service.UpdateOrderStatus: %w", err)
+	}
+
+	if !current.Status.CanTransitionTo(dto.Status) {
+		return nil, fmt.Errorf("cannot transition from %s to %s: %w",
+			current.Status, dto.Status, ErrInvalidTransition)
+	}
+
+	if err := s.repo.UpdateStatus(ctx, id, dto.Status, dto.ExpectedUpdatedAt); err != nil {
+		return nil, fmt.Errorf("service.UpdateOrderStatus: %w", err)
+	}
+
+	current.Status = dto.Status
+	return current, nil
 }
 
 func validateCreateDTO(dto CreateOrderDTO) error {

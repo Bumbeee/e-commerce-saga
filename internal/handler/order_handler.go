@@ -17,6 +17,7 @@ type OrderService interface {
 	CreateOrder(ctx context.Context, dto order.CreateOrderDTO) (*order.Order, error)
 	GetByID(ctx context.Context, uuid uuid.UUID) (*order.Order, error)
 	ListOrders(ctx context.Context, params order.ListParams) ([]*order.Order, int64, error)
+	UpdateStatus(ctx context.Context, uuid uuid.UUID, dto order.UpdateStatusDTO) (*order.Order, error)
 }
 
 type OrderHandler struct {
@@ -143,6 +144,47 @@ func (h *OrderHandler) List(w http.ResponseWriter, r *http.Request) {
 	if err := json.NewEncoder(w).Encode(response); err != nil {
 		h.log.Error("failed to encode response", "error", err)
 	}
+}
+
+// PATCH /orders/id
+func (h *OrderHandler) UpdateStatus(w http.ResponseWriter, r *http.Request) {
+	idStr := r.PathValue("id")
+	orderID, err := uuid.Parse(idStr)
+	if err != nil {
+		h.writeError(r.Context(), w, http.StatusBadRequest, "invalid id format", err)
+		return
+	}
+
+	var dto order.UpdateStatusDTO
+
+	defer r.Body.Close()
+
+	if err := json.NewDecoder(r.Body).Decode(&dto); err != nil {
+		h.writeError(r.Context(), w, http.StatusBadRequest, "invalid json", err)
+	}
+
+	updated, err := h.service.UpdateStatus(r.Context(), orderID, dto)
+	if err != nil {
+		if errors.Is(err, order.ErrInvalidTransition) {
+			h.writeError(r.Context(), w, http.StatusConflict, "invalid status transition", err)
+			return
+		}
+		if errors.Is(err, order.ErrConflict) {
+			h.writeError(r.Context(), w, http.StatusConflict, "resource was modified, please retry", err)
+			return
+		}
+		if errors.Is(err, order.ErrNotFound) {
+			h.writeError(r.Context(), w, http.StatusNotFound, "order not found", err)
+			return
+		}
+		h.log.Error("update order status failed", "id", idStr, "error", err)
+		h.writeError(r.Context(), w, http.StatusInternalServerError, "internal error", nil)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusOK)
+	_ = json.NewEncoder(w).Encode(updated)
 }
 
 func (h *OrderHandler) writeError(ctx context.Context, w http.ResponseWriter, status int, message string, err error) {
