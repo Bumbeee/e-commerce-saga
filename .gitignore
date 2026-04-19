@@ -21,9 +21,6 @@ profile.cov
 go.work
 go.work.sum
 
-# compose needes to be fixed
-docker-compose.yml 
-
 .DS_Store
 
 # env file
