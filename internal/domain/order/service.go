@@ -2,8 +2,11 @@ package order
 
 import (
 	"context"
+	"e-commerce/internal/domain/events"
+	contracts_order "e-commerce/pkg/contracts/order"
 	"errors"
 	"fmt"
+	"log/slog"
 	"time"
 
 	"github.com/google/uuid"
@@ -21,11 +24,13 @@ type UpdateStatusDTO struct {
 }
 
 type Service struct {
-	repo Repository
+	repo      Repository
+	publisher events.Publisher
+	log       *slog.Logger
 }
 
-func NewService(repo Repository) *Service {
-	return &Service{repo: repo}
+func NewService(repo Repository, publisher events.Publisher, log *slog.Logger) *Service {
+	return &Service{repo: repo, publisher: publisher, log: log}
 }
 
 func (s *Service) CreateOrder(ctx context.Context, dto CreateOrderDTO) (*Order, error) {
@@ -49,6 +54,23 @@ func (s *Service) CreateOrder(ctx context.Context, dto CreateOrderDTO) (*Order, 
 
 	if err := s.repo.Create(ctx, order); err != nil {
 		return nil, fmt.Errorf("service.CreateOrder: %w", err)
+	}
+
+	event := contracts_order.NewOrderCreatedEvent(
+		order.ID,
+		order.UserID,
+		order.TotalAmount,
+		order.CreatedAt,
+	)
+
+	jsonBytes, err := event.Marshal()
+	if err != nil {
+		// Баг в коде, а не временная ошибка → возвращаем 500
+		return nil, fmt.Errorf("marshal event: %w", err)
+	}
+
+	if err := s.publisher.Publish(ctx, "orders.dev", order.ID[:], jsonBytes); err != nil {
+		s.log.Warn("failed to publish OrderCreated", "order_id", order.ID, "error", err)
 	}
 
 	return order, nil

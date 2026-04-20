@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/joho/godotenv"
@@ -21,6 +22,8 @@ type Config struct {
 
 	LogLevel    string
 	ServiceName string
+
+	KafkaBrokers []string
 }
 
 // Load читает переменные окружения, парсит их и валидирует.
@@ -55,6 +58,10 @@ func Load() (*Config, error) {
 	cfg.DBConnMaxIdleTime, err = parseDuration("DB_CONN_MAX_IDLE_TIME", "30m")
 	if err != nil {
 		return nil, err
+	}
+	brokersEnv := os.Getenv("KAFKA_BROKERS")
+	if brokersEnv != "" {
+		cfg.KafkaBrokers = strings.Split(brokersEnv, ",")
 	}
 
 	return cfg, cfg.validate()

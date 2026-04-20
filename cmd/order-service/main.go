@@ -10,9 +10,11 @@ import (
 	"time"
 
 	"e-commerce/internal/config"
+	"e-commerce/internal/domain/events"
 	"e-commerce/internal/domain/order"
 	"e-commerce/internal/handler"
 	"e-commerce/internal/infrastructure/db"
+	"e-commerce/internal/infrastructure/kafka"
 	"e-commerce/internal/logger"
 )
 
@@ -46,8 +48,26 @@ func main() {
 		os.Exit(1)
 	}
 
+	var producer events.Publisher
+
+	if len(cfg.KafkaBrokers) > 0 {
+		producer = kafka.NewProducer(cfg.KafkaBrokers, "orders.dev")
+		log.Info("Kafka producer initialized", "brokers", cfg.KafkaBrokers)
+	} else {
+		log.Warn("Kafka brokers not configured, using no-op publisher")
+		producer = &kafka.NoOpPublisher{}
+	}
+
+	defer func() {
+		if err := producer.Close(); err != nil {
+			log.Error("failed to close producer", "error", err)
+		}
+	}()
+
+	//producer := kafka.NewProducer(cfg.KafkaBrokers, "order.dev")
+
 	orderRepo := db.NewOrderRepository(pool)
-	svc := order.NewService(orderRepo)
+	svc := order.NewService(orderRepo, producer, log)
 	orderHandler := handler.NewOrderHandler(svc, log)
 
 	mux := http.NewServeMux()
@@ -85,6 +105,7 @@ func main() {
 	}()
 
 	log.Info("server listening", "addr", cfg.ServerAddress)
+
 	if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
 		log.Error("server failed", "error", err)
 	}
